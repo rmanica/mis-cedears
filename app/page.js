@@ -9,11 +9,11 @@ import { RefreshCw, Clock, TrendingUp, AlertCircle } from "lucide-react";
 const REFRESH_MS = 60_000;
 
 export default function HomePage() {
-  const [data,       setData]       = useState({ cedears: [], ccl: null, errors: [] });
-  const [loading,    setLoading]    = useState(true);
+  const [data, setData] = useState({ cedears: [], ccl: null, errors: [] });
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
-  const [countdown,  setCountdown]  = useState(60);
+  const [countdown, setCountdown] = useState(60);
 
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -97,10 +97,10 @@ export default function HomePage() {
               </p>
               <p className="text-base text-amber-700 leading-relaxed">
                 Necesitás configurar una API key gratuita de Finnhub.<br />
-                Ir a <strong>finnhub.io</strong> → "Get free API key" → agregar en{" "}
+                Ir a <span>&quot;finnhub.io&quot;</span> → <span>&quot;Get free API key&quot;</span> → agregar en{" "}
                 <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-sm">.env.local</code>:{" "}
-                <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-sm">FINNHUB_API_KEY=tu_key</code>
-                {" "}→ reiniciar con{" "}
+                <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-sm">FINNHUB_API_KEY=tu_key</code>{" "}
+                → reiniciar con{" "}
                 <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-sm">npm run dev</code>
               </p>
             </div>
@@ -167,19 +167,10 @@ export default function HomePage() {
           <p className="text-base text-slate-500 leading-relaxed">
             ⚠️ Los precios de CEDEARs son de BYMA con <strong>~20 minutos de demora</strong>.<br />
             Los precios de acciones USA tienen <strong>~15 minutos de demora</strong>.<br />
-            <em>Esta información es orientativa. No constituye asesoramiento financiero.</em>
           </p>
         </div>
 
       </main>
-
-      {/* ── FOOTER ── */}
-      <footer className="border-t-2 border-slate-200 bg-white mt-8 py-6">
-        <p className="text-center text-base text-slate-400 font-medium">
-          Para agregar CEDEARs, editá{" "}
-          <code className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600">data/cedears.js</code>
-        </p>
-      </footer>
     </div>
   );
 }
