@@ -1,23 +1,6 @@
-/**
- * app/api/cedears/route.js
- *
- * Lógica:
- *   1. Rava panel HTML → precio real de BYMA en ARS (estimado: false)
- *   2. Si Rava falla → Finnhub: (precio_USD / ratio) × CCL → precio estimado en ARS (estimado: true)
- *
- * Fórmula del estimado:
- *   precio_estimado_ARS = (precio_USD / ratio) × CCL_promedio
- *
- *   Donde ratio = cuántos CEDEARs equivalen a 1 acción (X:1).
- *   Ej: MELI ratio=120 → 1 CEDEAR = 1/120 acción. precio = 1769/120 × 1450 = ARS 21.381
- *       Si MELI = USD 14,75 y CCL = 1.450 → precio estimado = 14,75 × 20 × 1.450 = ARS 428.050
- *
- * Nota: si Rava funciona, los precios son los reales de BYMA (~20 min de demora).
- * Si es estimado, puede diferir del precio real por el spread del CCL implícito.
- */
-
 import { NextResponse } from "next/server";
 import { CEDEARS } from "@/data/cedears";
+import { GET as getCCL } from "../ccl/route"; // Importa la función directamente
 
 let cache = { data: null, timestamp: 0 };
 const TTL = 55_000;
@@ -50,22 +33,17 @@ async function fetchRavaPanel() {
 
     const html = await res.text();
     const map  = {};
-
     const rowRegex  = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    const cellRegex = /<td[^>]*>\s*([\s\S]*?)\s*<\/td>/gi;
     let rowMatch;
 
     while ((rowMatch = rowRegex.exec(html)) !== null) {
       const cells = [];
       let cm;
-      // Reset lastIndex para cada fila
-      cellRegex.lastIndex = 0;
       const tempRegex = /<td[^>]*>\s*([\s\S]*?)\s*<\/td>/gi;
       while ((cm = tempRegex.exec(rowMatch[1])) !== null) {
         cells.push(cm[1].replace(/<[^>]+>/g, "").trim());
       }
 
-      // Formato Rava: [0]=Especie [1]=Precio [2]=Var% [3]=Apertura ...
       if (cells.length >= 3) {
         const sym    = cells[0].toUpperCase().split(/\s/)[0].replace(/[^A-Z0-9.]/g, "");
         const precio = toNum(cells[1]);
@@ -93,18 +71,11 @@ async function fetchRavaPanel() {
 }
 
 // ─── FUENTE 2: Finnhub × ratio × CCL (estimado) ──────────────────────────────
-//
-// precio_estimado_ARS = (precio_USD / ratio) × CCL_promedio
-//
-// Ej: MELI USD 14,75 × ratio 20 × CCL 1.450 = ARS 428.050
-// Esto es una estimación — el precio real en BYMA puede diferir.
-//
 async function fetchEstimadoARS(cedear) {
   try {
     const finnhubKey = process.env.FINNHUB_API_KEY;
     if (!finnhubKey) return null;
 
-    // 1. Precio en USD desde Finnhub
     const usdRes = await fetch(
       `https://finnhub.io/api/v1/quote?symbol=${cedear.usSymbol}&token=${finnhubKey}`,
       { signal: AbortSignal.timeout(5000) }
@@ -114,15 +85,12 @@ async function fetchEstimadoARS(cedear) {
     const precioUSD = parseFloat(usdJson?.c ?? 0);
     if (!precioUSD || precioUSD <= 0) return null;
 
-    // 2. CCL desde /api/ccl
-    const base   = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-    const cclRes = await fetch(`${base}/api/ccl`, { cache: "no-store" });
-    if (!cclRes.ok) return null;
+    // ── Obtener CCL directamente ──
+    const cclRes = await getCCL();
     const cclJson = await cclRes.json();
-    const ccl     = parseFloat(cclJson?.promedio ?? 0);
+    const ccl = parseFloat(cclJson?.promedio ?? 0);
     if (!ccl || ccl <= 0) return null;
 
-    // 3. precio_ARS = precio_USD × ratio × CCL
     const precioARS = (precioUSD / cedear.ratio) * ccl;
 
     console.log(
@@ -131,7 +99,7 @@ async function fetchEstimadoARS(cedear) {
 
     return {
       precio:    parseFloat(precioARS.toFixed(2)),
-      variacion: null,  // no disponible desde esta fuente
+      variacion: null,
     };
   } catch (err) {
     console.warn(`[cedears] Estimado ${cedear.symbol} error:`, err.message);
@@ -146,16 +114,13 @@ export async function GET() {
       return NextResponse.json(cache.data);
     }
 
-    // Intento 1: Rava panel (todos los CEDEARs en 1 request)
     const panelMap = await fetchRavaPanel();
 
-    // Construir resultados; fallback estimado para los que falten
     const results = await Promise.all(
       CEDEARS.map(async (cedear) => {
         const ravaData = panelMap?.[cedear.symbol] ?? null;
 
         if (ravaData) {
-          // Precio real de BYMA
           return {
             symbol:          cedear.symbol,
             usSymbol:        cedear.usSymbol,
@@ -168,7 +133,6 @@ export async function GET() {
           };
         }
 
-        // Fallback: estimado vía Finnhub × ratio × CCL
         const estimadoData = await fetchEstimadoARS(cedear);
 
         return {
